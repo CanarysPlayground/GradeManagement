@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"time"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/yourorg/grades-service/internal/models"
 	"github.com/yourorg/grades-service/internal/repository"
 	"github.com/yourorg/grades-service/internal/cache"
 )
@@ -19,51 +22,106 @@ func NewGradeHandlers(r repository.Repository, c cache.Cache) *GradeHandlers {
 }
 
 func (h *GradeHandlers) ListGrades(w http.ResponseWriter, r *http.Request) {
-	grades, _ := h.repo.ListGrades()
-	json.NewEncoder(w).Encode(grades)
+	ctx := r.Context()
+	// try cache first
+	if body, err := h.cache.Get(ctx, "grades:list"); err == nil && body != "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(body))
+		return
+	}
+	grades, err := h.repo.ListGrades(ctx)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	b, _ := json.Marshal(grades)
+	// set cache for 30s
+	_ = h.cache.Set(ctx, "grades:list", string(b), 30*time.Second)
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(b)
 }
 
 func (h *GradeHandlers) CreateGrade(w http.ResponseWriter, r *http.Request) {
-	var g repository.Grade
-	_ = json.NewDecoder(r.Body).Decode(&g)
-	id, _ := h.repo.CreateGrade(g)
+	ctx := r.Context()
+	var g models.Grade
+	if err := json.NewDecoder(r.Body).Decode(&g); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	id, err := h.repo.CreateGrade(ctx, g)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	// invalidate list cache
+	_ = h.cache.Set(ctx, "grades:list", "", 1*time.Second)
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]int{"id": id})
 }
 
 func (h *GradeHandlers) GetGrade(w http.ResponseWriter, r *http.Request) {
-	idStr := r.URL.Query().Get("id")
-	if idStr == "" {
-		// try chi url param
-		idStr = chiURLParam(r, "id")
+	ctx := r.Context()
+	idStr := chi.URLParam(r, "id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
 	}
-	id, _ := strconv.Atoi(idStr)
-	g, _ := h.repo.GetGrade(id)
-	json.NewEncoder(w).Encode(g)
+	// try cache
+	key := "grade:" + idStr
+	if body, err := h.cache.Get(ctx, key); err == nil && body != "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(body))
+		return
+	}
+	g, err := h.repo.GetGrade(ctx, id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	b, _ := json.Marshal(g)
+	_ = h.cache.Set(ctx, key, string(b), 60*time.Second)
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(b)
 }
 
 func (h *GradeHandlers) UpdateGrade(w http.ResponseWriter, r *http.Request) {
-	idStr := chiURLParam(r, "id")
-	id, _ := strconv.Atoi(idStr)
-	var g repository.Grade
-	_ = json.NewDecoder(r.Body).Decode(&g)
-	_ = h.repo.UpdateGrade(id, g)
+	ctx := r.Context()
+	idStr := chi.URLParam(r, "id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+	var g models.Grade
+	if err := json.NewDecoder(r.Body).Decode(&g); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := h.repo.UpdateGrade(ctx, id, g); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	// invalidate caches
+	_ = h.cache.Set(ctx, "grades:list", "", 1*time.Second)
+	_ = h.cache.Set(ctx, "grade:"+idStr, "", 1*time.Second)
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
 func (h *GradeHandlers) DeleteGrade(w http.ResponseWriter, r *http.Request) {
-	idStr := chiURLParam(r, "id")
-	id, _ := strconv.Atoi(idStr)
-	_ = h.repo.DeleteGrade(id)
+	ctx := r.Context()
+	idStr := chi.URLParam(r, "id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+	if err := h.repo.DeleteGrade(ctx, id); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	// invalidate
+	_ = h.cache.Set(ctx, "grades:list", "", 1*time.Second)
+	_ = h.cache.Set(ctx, "grade:"+idStr, "", 1*time.Second)
 	w.WriteHeader(http.StatusNoContent)
-}
-
-// chiURLParam extracts chi URL param without importing chi in this file to keep testable.
-func chiURLParam(r *http.Request, name string) string {
-	// chi stores URL params in context under key "chiCtx"
-	// but to avoid importing chi here, use the URL path parsing fallback
-	// If chi is used the standard way this will work via r.URL.Path
-	// as a simple heuristic for this scaffold.
-	// For now, return empty string to keep code compiling.
-	return ""
 }

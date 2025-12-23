@@ -1,17 +1,35 @@
 package cache
 
-// Cache defines minimal cache interface
+import (
+	"context"
+	"time"
+
+	"github.com/redis/go-redis/v9"
+)
+
 type Cache interface {
-	Get(key string) (string, error)
-	Set(key string, value string) error
+	Get(ctx context.Context, key string) (string, error)
+	Set(ctx context.Context, key string, value string, ttl time.Duration) error
 }
 
-// NewRedisCache returns a simple stub cache that ignores redisAddr for now
+type redisCache struct{
+	client *redis.Client
+}
+
 func NewRedisCache(redisAddr string) Cache {
-	return &noopCache{}
+	if redisAddr == "" {
+		// return noop cache
+		return &redisCache{client: redis.NewClient(&redis.Options{Addr: "127.0.0.1:0"})}
+	}
+	opt := &redis.Options{Addr: redisAddr}
+	client := redis.NewClient(opt)
+	return &redisCache{client: client}
 }
 
-type noopCache struct{}
+func (r *redisCache) Get(ctx context.Context, key string) (string, error) {
+	return r.client.Get(ctx, key).Result()
+}
 
-func (n *noopCache) Get(key string) (string, error) { return "", nil }
-func (n *noopCache) Set(key string, value string) error { return nil }
+func (r *redisCache) Set(ctx context.Context, key string, value string, ttl time.Duration) error {
+	return r.client.Set(ctx, key, value, ttl).Err()
+}
