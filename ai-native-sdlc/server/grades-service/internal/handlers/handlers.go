@@ -55,6 +55,7 @@ func (h *GradeHandlers) CreateGrade(w http.ResponseWriter, r *http.Request) {
 	}
 	// invalidate list cache
 	_ = h.cache.Set(ctx, "grades:list", "", 1*time.Second)
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]int{"id": id})
 }
@@ -105,6 +106,7 @@ func (h *GradeHandlers) UpdateGrade(w http.ResponseWriter, r *http.Request) {
 	// invalidate caches
 	_ = h.cache.Set(ctx, "grades:list", "", 1*time.Second)
 	_ = h.cache.Set(ctx, "grade:"+idStr, "", 1*time.Second)
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
