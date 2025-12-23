@@ -1,0 +1,24 @@
+# Binaries
+bin/
+
+# Vendor
+vendor/
+
+# IDE
+.vscode/
+.idea/
+
+# Node
+node_modules/
+
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# Go
+*.exe
+*.test
+
+# Logs
+*.log

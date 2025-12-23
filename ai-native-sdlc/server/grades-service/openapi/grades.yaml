@@ -1,0 +1,47 @@
+openapi: 3.0.3
+info:
+  title: Grades API
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080
+paths:
+  /grades:
+    get:
+      summary: List grades
+      responses:
+        '200':
+          description: OK
+    post:
+      summary: Create grade
+      responses:
+        '201':
+          description: Created
+  /grades/{id}:
+    get:
+      summary: Get grade by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: OK }
+        '404': { description: Not Found }
+    put:
+      summary: Update grade
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: OK }
+    delete:
+      summary: Delete grade
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '204': { description: No Content }
