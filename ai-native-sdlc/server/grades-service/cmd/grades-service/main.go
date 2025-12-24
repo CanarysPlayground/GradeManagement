@@ -4,19 +4,33 @@ import (
 	"log"
 	"net/http"
 	"os"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/yourorg/grades-service/internal/cache"
 	"github.com/yourorg/grades-service/internal/handlers"
 	"github.com/yourorg/grades-service/internal/repository"
-	"github.com/yourorg/grades-service/internal/cache"
 )
 
 func main() {
 	dsn := os.Getenv("DB_DSN")
 	redisAddr := os.Getenv("REDIS_ADDR")
 
-	repo, err := repository.NewPostgresRepository(dsn)
-	if err != nil { log.Fatal(err) }
+	var repo repository.Repository
+	if dsn != "" {
+		r, err := repository.NewPostgresRepository(dsn)
+		if err != nil {
+			log.Printf("Warning: Failed to connect to PostgreSQL: %v", err)
+			log.Println("Using mock repository for development...")
+			repo = repository.NewMockRepository()
+		} else {
+			repo = r
+		}
+	} else {
+		log.Println("DB_DSN not set. Using mock repository for development...")
+		repo = repository.NewMockRepository()
+	}
+
 	c := cache.NewRedisCache(redisAddr)
 
 	h := handlers.NewGradeHandlers(repo, c)
